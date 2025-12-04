@@ -186,6 +186,9 @@ export function DatasetManager() {
             const folderPath = path ? `${path}/${folder.name}` : folder.name;
             metadata.folders.push({ id: folder.id, name: folder.name, path: folderPath });
 
+            // Always create the folder in the ZIP (this ensures empty folders are included)
+            zip.folder(folderPath);
+
             const folderFiles = files[folder.id] || [];
             folderFiles.forEach((f) => {
                 zip.file(`${folderPath}/${f.name}`, f.file);
