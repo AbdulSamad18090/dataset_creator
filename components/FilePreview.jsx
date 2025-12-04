@@ -53,7 +53,7 @@ export function FilePreview({ files, onDrop, onRemove }) {
                                 <img
                                     src={file.preview}
                                     alt={file.name}
-                                    className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                                    className="w-full h-full object-cover scale-125 transition-transform group-hover:scale-130"
                                     onLoad={() => {
                                         // Optional: revoke object URL to avoid memory leaks if we were managing it strictly, 
                                         // but for this app keeping it alive is fine for navigation.
