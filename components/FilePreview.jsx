@@ -16,12 +16,12 @@ export function FilePreview({ files, onDrop, onRemove }) {
     });
 
     return (
-        <div className="h-full flex flex-col gap-4">
+        <div className="h-full flex flex-col gap-4 overflow-hidden">
             {/* Drop Zone */}
             <div
                 {...getRootProps()}
                 className={`
-          border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-colors
+          border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center text-center cursor-pointer transition-colors shrink-0
           ${isDragActive ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50"}
         `}
             >
@@ -40,7 +40,7 @@ export function FilePreview({ files, onDrop, onRemove }) {
             </div>
 
             {/* File Grid */}
-            <ScrollArea className="flex-1 -mr-4 pr-4">
+            <div className="flex-1 min-h-0 overflow-auto">
                 {files.length === 0 ? (
                     <div className="h-40 flex flex-col items-center justify-center text-muted-foreground opacity-50">
                         <ImageIcon className="h-10 w-10 mb-2" />
@@ -80,7 +80,7 @@ export function FilePreview({ files, onDrop, onRemove }) {
                         ))}
                     </div>
                 )}
-            </ScrollArea>
+            </div>
         </div>
     );
 }
