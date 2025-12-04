@@ -1,16 +1,18 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { FolderTree } from "./FolderTree";
 import { FilePreview } from "./FilePreview";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Download, FolderPlus } from "lucide-react";
+import { Download } from "lucide-react";
 import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import { v4 as uuidv4 } from "uuid";
+import localforage from "localforage";
 
 import {
     AlertDialog,
@@ -24,15 +26,98 @@ import {
 } from "@/components/ui/alert-dialog";
 
 export function DatasetManager() {
+    const router = useRouter();
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
+
     const [folders, setFolders] = useState([
         { id: "root", name: "Root", parentId: null, children: [] },
     ]);
     const [selectedFolderId, setSelectedFolderId] = useState("root");
-    const [files, setFiles] = useState({}); // { folderId: [file1, file2] }
+    const [files, setFiles] = useState({});
     const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
     const [newFolderName, setNewFolderName] = useState("");
     const [createFolderParentId, setCreateFolderParentId] = useState(null);
     const [folderToDeleteId, setFolderToDeleteId] = useState(null);
+    const [isLoaded, setIsLoaded] = useState(false);
+
+    // Load state from storage on mount
+    useEffect(() => {
+        const loadState = async () => {
+            console.log("Starting to load state...");
+            try {
+                localforage.config({ name: 'dataset_creator' });
+
+                const storedFolders = await localforage.getItem("folders");
+                const storedFiles = await localforage.getItem("files");
+
+                console.log("Loaded folders:", storedFolders ? "Found" : "Null");
+                console.log("Loaded files:", storedFiles ? "Found" : "Null");
+
+                if (storedFolders) {
+                    setFolders(storedFolders);
+                }
+
+                if (storedFiles) {
+                    const hydratedFiles = {};
+                    Object.keys(storedFiles).forEach((folderId) => {
+                        hydratedFiles[folderId] = storedFiles[folderId].map((f) => ({
+                            ...f,
+                            preview: URL.createObjectURL(f.file),
+                        }));
+                    });
+                    setFiles(hydratedFiles);
+                }
+
+                const folderIdParam = searchParams.get("folderId");
+                if (folderIdParam) {
+                    setSelectedFolderId(folderIdParam);
+                }
+            } catch (error) {
+                console.error("Failed to load state from storage:", error);
+            } finally {
+                console.log("Finished loading state.");
+                setIsLoaded(true);
+            }
+        };
+
+        const timeoutId = setTimeout(() => {
+            console.warn("State loading timed out, forcing application load.");
+            setIsLoaded(true);
+        }, 1000);
+
+        loadState().then(() => clearTimeout(timeoutId));
+    }, [searchParams]);
+
+    // Sync URL when selectedFolderId changes
+    useEffect(() => {
+        if (!isLoaded) return;
+
+        const currentFolderId = searchParams.get("folderId");
+        if (currentFolderId !== selectedFolderId) {
+            const params = new URLSearchParams(searchParams.toString());
+            if (selectedFolderId) {
+                params.set("folderId", selectedFolderId);
+            } else {
+                params.delete("folderId");
+            }
+            router.replace(`${pathname}?${params.toString()}`);
+        }
+    }, [selectedFolderId, isLoaded, router, pathname, searchParams]);
+
+    // Save folders to storage when changed
+    useEffect(() => {
+        if (isLoaded) {
+            localforage.setItem("folders", folders).catch(err => console.error("Failed to save folders:", err));
+        }
+    }, [folders, isLoaded]);
+
+    // Save files to storage when changed
+    useEffect(() => {
+        if (isLoaded) {
+            localforage.setItem("files", files).catch(err => console.error("Failed to save files:", err));
+        }
+    }, [files, isLoaded]);
 
     const handleCreateFolder = () => {
         if (!newFolderName.trim()) return;
@@ -57,7 +142,6 @@ export function DatasetManager() {
                     return node;
                 });
             };
-
             return addFolder(prev);
         });
 
@@ -98,10 +182,8 @@ export function DatasetManager() {
         const zip = new JSZip();
         const metadata = { folders: [], files: [] };
 
-        // Helper to traverse folders and add to zip
         const processFolder = (folder, path) => {
             const folderPath = path ? `${path}/${folder.name}` : folder.name;
-
             metadata.folders.push({ id: folder.id, name: folder.name, path: folderPath });
 
             const folderFiles = files[folder.id] || [];
@@ -118,11 +200,7 @@ export function DatasetManager() {
             folder.children.forEach((child) => processFolder(child, folderPath));
         };
 
-        // Start from the root folder(s)
-        folders.forEach(folder => {
-            processFolder(folder, "");
-        });
-
+        folders.forEach(folder => processFolder(folder, ""));
         zip.file("dataset_metadata.json", JSON.stringify(metadata, null, 2));
 
         const content = await zip.generateAsync({ type: "blob" });
@@ -133,9 +211,8 @@ export function DatasetManager() {
         if (!folderToDeleteId) return;
         const folderId = folderToDeleteId;
 
-        if (folderId === "root") return; // Prevent deleting root
+        if (folderId === "root") return;
 
-        // Helper to collect all folder IDs to remove (including children)
         const getFolderIdsToRemove = (nodes, targetId) => {
             let ids = [];
             for (const node of nodes) {
@@ -199,6 +276,10 @@ export function DatasetManager() {
     };
 
     const selectedFolder = findFolder(folders, selectedFolderId);
+
+    if (!isLoaded) {
+        return <div className="flex h-screen w-full items-center justify-center">Loading...</div>;
+    }
 
     return (
         <div className="flex h-screen w-full bg-background text-foreground overflow-hidden">
